@@ -12,7 +12,13 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show repo tree
+        run: dir /s
 
       - name: Install Rust (MSVC toolchain)
         uses: actions-rs/toolchain@v1
@@ -28,7 +34,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: clicker-windows-x64
-          path: target\x86_64-pc-windows-msvc\release\clicker.exe
+          path: target\\x86_64-pc-windows-msvc\\release\\clicker.exe
 
       - name: Publish to GitHub Release (attach exe)
         if: startsWith(github.ref, 'refs/tags/')
