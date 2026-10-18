@@ -18,9 +18,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Show repo tree (PowerShell)
+      - name: Show repo snapshot (debug)
         shell: pwsh
-        run: Get-ChildItem -Path . -Recurse -Force
+        run: Get-ChildItem -Path . -Recurse -Force | Select-Object -First 80
 
       - name: Install Rust (MSVC toolchain)
         uses: actions-rs/toolchain@v1
@@ -30,7 +30,7 @@ jobs:
           default: true
 
       - name: Build (release)
-        run: cargo build --release --target x86_64-pc-windows-msvc
+        run: cargo build --release --manifest-path ./Cargo.toml --target x86_64-pc-windows-msvc
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
