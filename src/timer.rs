@@ -56,14 +56,12 @@ impl PrecisionTimer {
     }
 
     pub fn stop(&mut self) {
-        // Signal the thread to stop
         self.is_running.store(false, Ordering::SeqCst);
 
         if let Some(sender) = &self.command_sender {
             let _ = sender.send(TimerCommand::Stop);
         }
 
-        // Don't block the UI thread - let the thread finish naturally
         self.status_sender = None;
         self.command_sender = None;
     }
@@ -74,7 +72,6 @@ impl PrecisionTimer {
         command_receiver: Receiver<TimerCommand>,
         is_running: Arc<AtomicBool>,
     ) {
-        // Create Enigo ONCE at the start of the timer session
         let mut enigo = match Enigo::new(&Settings::default()) {
             Ok(enigo) => enigo,
             Err(e) => {
@@ -85,10 +82,8 @@ impl PrecisionTimer {
             }
         };
 
-        // Create RNG ONCE at the start (for jitter mode)
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
-        // Pre-calculate CPS interval ONCE at the start (for CPS mode)
         let cps_interval = if config.cps > 0.0 {
             Duration::from_nanos((1_000_000_000.0 / config.cps) as u64)
         } else {
@@ -98,7 +93,6 @@ impl PrecisionTimer {
         let mut next_target_time = Instant::now();
 
         loop {
-            // Check for stop command
             if let Ok(TimerCommand::Stop) = command_receiver.try_recv() {
                 break;
             }
@@ -110,25 +104,19 @@ impl PrecisionTimer {
             let now = Instant::now();
             if now < next_target_time {
                 let sleep_duration = next_target_time - now;
-                // Sleep the thread until the next target time
                 thread::sleep(sleep_duration);
                 continue;
             }
 
-            // Determine delay until next tick based on mode
             let delay_duration = match config.delay_mode {
                 DelayMode::Cps => cps_interval,
                 DelayMode::Jitter => {
                     let min_ms = config.min_delay_ms;
                     let max_ms = config.max_delay_ms;
-
-                    // Guard against inverted or equal ranges
                     if max_ms <= min_ms {
                         Duration::from_millis(min_ms)
                     } else {
-                        // Sample a uniform integer in [min_ms, max_ms] using RNG's next_u64()
                         let range = max_ms - min_ms + 1;
-                        // Use modulus sampling; range should be small (ms), so bias is negligible here.
                         let r = rng.next_u64() % range;
                         let ms = min_ms + r;
                         Duration::from_millis(ms)
@@ -136,7 +124,6 @@ impl PrecisionTimer {
                 }
             };
 
-            // Perform the click action according to config using enigo's Mouse trait methods
             match config.click_type {
                 ClickType::Single => {
                     match config.click_button {
@@ -200,8 +187,13 @@ impl PrecisionTimer {
                 }
             }
 
-            // Advance the next target time
             next_target_time = Instant::now() + delay_duration;
         }
+    }
+}
+
+impl Default for PrecisionTimer {
+    fn default() -> Self {
+        Self::new()
     }
 }
