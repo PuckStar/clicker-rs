@@ -1,8 +1,9 @@
 use crate::config::{ClickButton, ClickType, ClickerConfig, DelayMode};
 use crate::constants::*;
 use crossbeam::channel::{self, Receiver, Sender};
-use enigo::{Button, Enigo, Mouse, Settings};
-use rand::Rng;
+use enigo::{Button, Direction, Enigo, Settings};
+use rand::distributions::{Distribution, Uniform};
+use rand::RngCore;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -85,7 +86,7 @@ impl PrecisionTimer {
             }
         };
 
-        // Create RNG ONCE at the start (for jitter mode) using modern rand API
+        // Create RNG ONCE at the start (for jitter mode) using a stable sampling API
         let mut rng = rand::thread_rng();
 
         // Pre-calculate CPS interval ONCE at the start (for CPS mode)
@@ -119,65 +120,80 @@ impl PrecisionTimer {
             let delay_duration = match config.delay_mode {
                 DelayMode::Cps => cps_interval,
                 DelayMode::Jitter => {
-                    // Use inclusive range for min..=max so we can include upper bound if desired
                     let min_ms = config.min_delay_ms;
                     let max_ms = config.max_delay_ms;
-                    // Guard against inverted ranges
-                    let ms = if max_ms <= min_ms {
-                        min_ms
+
+                    // Guard against inverted or equal ranges
+                    if max_ms <= min_ms {
+                        Duration::from_millis(min_ms)
                     } else {
-                        rng.gen_range(min_ms..=max_ms)
-                    };
-                    Duration::from_millis(ms)
+                        // Uniform inclusive sampling to avoid using gen_range/random_range differences
+                        let dist = Uniform::new_inclusive(min_ms, max_ms);
+                        let ms = dist.sample(&mut rng);
+                        Duration::from_millis(ms)
+                    }
                 }
             };
 
-            // Perform the click action according to config
+            // Perform the click action according to config using enigo.button with Press/Release
             match config.click_type {
                 ClickType::Single => {
                     match config.click_button {
-                        ClickButton::Left => enigo.mouse_click(Button::Left),
-                        ClickButton::Right => enigo.mouse_click(Button::Right),
-                        ClickButton::Middle => enigo.mouse_click(Button::Middle),
+                        ClickButton::Left => {
+                            let _ = enigo.button(Button::Left, Direction::Press);
+                            let _ = enigo.button(Button::Left, Direction::Release);
+                        }
+                        ClickButton::Right => {
+                            let _ = enigo.button(Button::Right, Direction::Press);
+                            let _ = enigo.button(Button::Right, Direction::Release);
+                        }
+                        ClickButton::Middle => {
+                            let _ = enigo.button(Button::Middle, Direction::Press);
+                            let _ = enigo.button(Button::Middle, Direction::Release);
+                        }
                     }
                 }
                 ClickType::Double => {
                     match config.click_button {
                         ClickButton::Left => {
-                            enigo.mouse_click(Button::Left);
-                            // small pause between clicks in a double click
+                            let _ = enigo.button(Button::Left, Direction::Press);
+                            let _ = enigo.button(Button::Left, Direction::Release);
                             thread::sleep(Duration::from_millis(40));
-                            enigo.mouse_click(Button::Left);
+                            let _ = enigo.button(Button::Left, Direction::Press);
+                            let _ = enigo.button(Button::Left, Direction::Release);
                         }
                         ClickButton::Right => {
-                            enigo.mouse_click(Button::Right);
+                            let _ = enigo.button(Button::Right, Direction::Press);
+                            let _ = enigo.button(Button::Right, Direction::Release);
                             thread::sleep(Duration::from_millis(40));
-                            enigo.mouse_click(Button::Right);
+                            let _ = enigo.button(Button::Right, Direction::Press);
+                            let _ = enigo.button(Button::Right, Direction::Release);
                         }
                         ClickButton::Middle => {
-                            enigo.mouse_click(Button::Middle);
+                            let _ = enigo.button(Button::Middle, Direction::Press);
+                            let _ = enigo.button(Button::Middle, Direction::Release);
                             thread::sleep(Duration::from_millis(40));
-                            enigo.mouse_click(Button::Middle);
+                            let _ = enigo.button(Button::Middle, Direction::Press);
+                            let _ = enigo.button(Button::Middle, Direction::Release);
                         }
                     }
                 }
                 ClickType::Hold => {
-                    // Press and release quickly to emulate a hold for a short duration
                     match config.click_button {
                         ClickButton::Left => {
-                            enigo.mouse_down(Button::Left);
+                            let _ = enigo.button(Button::Left, Direction::Press);
                             thread::sleep(Duration::from_millis(50));
-                            enigo.mouse_up(Button::Left);
+                            let _ = enigo.button(Button::Left, Direction::Release);
                         }
                         ClickButton::Right => {
-                            enigo.mouse_down(Button::Right);
+                            let _ = enigo.button(Button::Right, Direction::Press);
                             thread::sleep(Duration::from_millis(50));
-                            enigo.mouse_up(Button::Right);
+                            let _ = enigo.button(Button::Right, Direction::Release);
                         }
                         ClickButton::Middle => {
-                            enigo.mouse_down(Button::Middle);
+                            let _ = enigo.button(Button::Middle, Direction::Press);
                             thread::sleep(Duration::from_millis(50));
-                            enigo.mouse_up(Button::Middle);
+                            let _ = enigo.button(Button::Middle, Direction::Release);
                         }
                     }
                 }
