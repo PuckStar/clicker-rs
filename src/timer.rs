@@ -1,12 +1,22 @@
 use crate::config::{ClickButton, ClickType, ClickerConfig, DelayMode};
 use crate::constants::*;
 use crossbeam::channel::{self, Receiver, Sender};
-use enigo::{Button, Direction, Enigo, Mouse, Settings};
-use rand::RngCore;
+use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
+use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone)]
+pub enum TimerCommand {
+    Stop,
+}
+
+#[derive(Debug, Clone)]
+pub enum StatusUpdate {
+    Error(String),
+}
 
 fn random_point_in_box(config: &ClickerConfig, rng: &mut impl rand::Rng) -> (i32, i32) {
     if !config.bounding_box_enabled {
@@ -18,9 +28,15 @@ fn random_point_in_box(config: &ClickerConfig, rng: &mut impl rand::Rng) -> (i32
     let x2 = config.box_x2;
     let y2 = config.box_y2;
 
-    let x = rng.random_range(x1.min(x2)..=x1.max(x2));
-    let y = rng.random_range(y1.min(y2)..=y1.max(y2));
-    (x, y)
+    let min_x = x1.min(x2);
+    let max_x = x1.max(x2);
+    let min_y = y1.min(y2);
+    let max_y = y1.max(y2);
+
+    (
+        rng.random_range(min_x..=max_x),
+        rng.random_range(min_y..=max_y),
+    )
 }
 
 pub struct PrecisionTimer {
@@ -118,12 +134,11 @@ impl PrecisionTimer {
                 DelayMode::Jitter => {
                     let min_ms = config.min_delay_ms;
                     let max_ms = config.max_delay_ms;
+
                     if max_ms <= min_ms {
                         Duration::from_millis(min_ms)
                     } else {
-                        let range = max_ms - min_ms + 1;
-                        let r = rng.next_u64() % range;
-                        let ms = min_ms + r;
+                        let ms = rng.random_range(min_ms..=max_ms);
                         Duration::from_millis(ms)
                     }
                 }
@@ -131,7 +146,7 @@ impl PrecisionTimer {
 
             if config.bounding_box_enabled {
                 let (mx, my) = random_point_in_box(&config, &mut rng);
-                enigo.mouse_move_to(mx, my);
+                let _ = enigo.move_mouse(mx, my, Coordinate::Abs);
             }
 
             match config.click_type {
@@ -199,5 +214,11 @@ impl PrecisionTimer {
 
             next_target_time = Instant::now() + delay_duration;
         }
+    }
+}
+
+impl Default for PrecisionTimer {
+    fn default() -> Self {
+        Self::new()
     }
 }
