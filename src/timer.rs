@@ -1,8 +1,7 @@
 use crate::config::{ClickButton, ClickType, ClickerConfig, DelayMode};
 use crate::constants::*;
 use crossbeam::channel::{self, Receiver, Sender};
-use enigo::{Button, Direction, Enigo, Settings};
-use rand::distributions::{Distribution, Uniform};
+use enigo::{Button, Direction, Enigo, Mouse, Settings};
 use rand::RngCore;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -86,7 +85,7 @@ impl PrecisionTimer {
             }
         };
 
-        // Create RNG ONCE at the start (for jitter mode) using a stable sampling API
+        // Create RNG ONCE at the start (for jitter mode)
         let mut rng = rand::thread_rng();
 
         // Pre-calculate CPS interval ONCE at the start (for CPS mode)
@@ -127,15 +126,17 @@ impl PrecisionTimer {
                     if max_ms <= min_ms {
                         Duration::from_millis(min_ms)
                     } else {
-                        // Uniform inclusive sampling to avoid using gen_range/random_range differences
-                        let dist = Uniform::new_inclusive(min_ms, max_ms);
-                        let ms = dist.sample(&mut rng);
+                        // Sample a uniform integer in [min_ms, max_ms] using RNG's next_u64()
+                        let range = max_ms - min_ms + 1;
+                        // Use modulus sampling; range should be small (ms), so bias is negligible here.
+                        let r = rng.next_u64() % range;
+                        let ms = min_ms + r;
                         Duration::from_millis(ms)
                     }
                 }
             };
 
-            // Perform the click action according to config using enigo.button with Press/Release
+            // Perform the click action according to config using enigo's Mouse trait methods
             match config.click_type {
                 ClickType::Single => {
                     match config.click_button {
