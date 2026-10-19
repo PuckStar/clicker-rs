@@ -498,41 +498,36 @@ fn view(state: &State) -> Element<'_, Message> {
         UI_INTERVAL_INVALID_TEXT,
     );
 
+    // bounding box UI (stacked vertically so inputs fit in narrow windows)
     let bbox_inputs = column![
-        row![
-            input_row(
-                UI_BOX_X1_LABEL,
-                UI_BOX_PLACEHOLDER,
-                &state.box_x1_input,
-                Message::BoxX1Changed,
-                validation_indicator(true, UI_INTERVAL_VALID_TEXT, UI_INTERVAL_INVALID_TEXT),
-            ),
-            input_row(
-                UI_BOX_Y1_LABEL,
-                UI_BOX_PLACEHOLDER,
-                &state.box_y1_input,
-                Message::BoxY1Changed,
-                validation_indicator(true, UI_INTERVAL_VALID_TEXT, UI_INTERVAL_INVALID_TEXT),
-            )
-        ]
-        .spacing(UI_SPACING_SMALL),
-        row![
-            input_row(
-                UI_BOX_X2_LABEL,
-                UI_BOX_PLACEHOLDER,
-                &state.box_x2_input,
-                Message::BoxX2Changed,
-                validation_indicator(true, UI_INTERVAL_VALID_TEXT, UI_INTERVAL_INVALID_TEXT),
-            ),
-            input_row(
-                UI_BOX_Y2_LABEL,
-                UI_BOX_PLACEHOLDER,
-                &state.box_y2_input,
-                Message::BoxY2Changed,
-                validation_indicator(true, UI_INTERVAL_VALID_TEXT, UI_INTERVAL_INVALID_TEXT),
-            )
-        ]
-        .spacing(UI_SPACING_SMALL),
+        input_row(
+            UI_BOX_X1_LABEL,
+            UI_BOX_PLACEHOLDER,
+            &state.box_x1_input,
+            Message::BoxX1Changed,
+            validation_indicator(true, UI_INTERVAL_VALID_TEXT, UI_INTERVAL_INVALID_TEXT),
+        ),
+        input_row(
+            UI_BOX_Y1_LABEL,
+            UI_BOX_PLACEHOLDER,
+            &state.box_y1_input,
+            Message::BoxY1Changed,
+            validation_indicator(true, UI_INTERVAL_VALID_TEXT, UI_INTERVAL_INVALID_TEXT),
+        ),
+        input_row(
+            UI_BOX_X2_LABEL,
+            UI_BOX_PLACEHOLDER,
+            &state.box_x2_input,
+            Message::BoxX2Changed,
+            validation_indicator(true, UI_INTERVAL_VALID_TEXT, UI_INTERVAL_INVALID_TEXT),
+        ),
+        input_row(
+            UI_BOX_Y2_LABEL,
+            UI_BOX_PLACEHOLDER,
+            &state.box_y2_input,
+            Message::BoxY2Changed,
+            validation_indicator(true, UI_INTERVAL_VALID_TEXT, UI_INTERVAL_INVALID_TEXT),
+        ),
         bbox_validation
     ]
     .spacing(UI_SPACING_SMALL);
