@@ -8,14 +8,19 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone)]
-pub enum TimerCommand {
-    Stop,
-}
+fn random_point_in_box(config: &ClickerConfig, rng: &mut impl rand::Rng) -> (i32, i32) {
+    if !config.bounding_box_enabled {
+        return (0, 0);
+    }
 
-#[derive(Debug, Clone)]
-pub enum StatusUpdate {
-    Error(String),
+    let x1 = config.box_x1;
+    let y1 = config.box_y1;
+    let x2 = config.box_x2;
+    let y2 = config.box_y2;
+
+    let x = rng.random_range(x1.min(x2)..=x1.max(x2));
+    let y = rng.random_range(y1.min(y2)..=y1.max(y2));
+    (x, y)
 }
 
 pub struct PrecisionTimer {
@@ -124,6 +129,11 @@ impl PrecisionTimer {
                 }
             };
 
+            if config.bounding_box_enabled {
+                let (mx, my) = random_point_in_box(&config, &mut rng);
+                enigo.mouse_move_to(mx, my);
+            }
+
             match config.click_type {
                 ClickType::Single => {
                     match config.click_button {
@@ -189,11 +199,5 @@ impl PrecisionTimer {
 
             next_target_time = Instant::now() + delay_duration;
         }
-    }
-}
-
-impl Default for PrecisionTimer {
-    fn default() -> Self {
-        Self::new()
     }
 }
