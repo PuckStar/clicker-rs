@@ -2,6 +2,7 @@ use crate::config::{ClickButton, ClickType, ClickerConfig, DelayMode};
 use crate::constants::*;
 use crossbeam::channel::{self, Receiver, Sender};
 use enigo::{Button, Enigo, Mouse, Settings};
+use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -63,7 +64,6 @@ impl PrecisionTimer {
         }
 
         // Don't block the UI thread - let the thread finish naturally
-        // The handle will be cleaned up in the Drop implementation
         self.status_sender = None;
         self.command_sender = None;
     }
@@ -85,15 +85,20 @@ impl PrecisionTimer {
             }
         };
 
-        // Create RNG ONCE at the start of the timer session (for jitter mode)
-        let mut rng = rand::rng();
+        // Create RNG ONCE at the start (for jitter mode) using modern rand API
+        let mut rng = rand::thread_rng();
 
         // Pre-calculate CPS interval ONCE at the start (for CPS mode)
-        let cps_interval = Duration::from_nanos((1_000_000_000.0 / config.cps) as u64);
+        let cps_interval = if config.cps > 0.0 {
+            Duration::from_nanos((1_000_000_000.0 / config.cps) as u64)
+        } else {
+            Duration::from_millis(config.interval_ms)
+        };
 
         let mut next_target_time = Instant::now();
 
         loop {
+            // Check for stop command
             if let Ok(TimerCommand::Stop) = command_receiver.try_recv() {
                 break;
             }
@@ -105,109 +110,81 @@ impl PrecisionTimer {
             let now = Instant::now();
             if now < next_target_time {
                 let sleep_duration = next_target_time - now;
+                // Sleep the thread until the next target time
                 thread::sleep(sleep_duration);
+                continue;
             }
 
-            // If bounded box clicking is enabled, pick a target and move the mouse there first
-            if config.bounding_box_enabled {
-                // generate inclusive-int random coordinates inside the box
-                let x = rng.random_range(config.box_x1..=config.box_x2);
-                let y = rng.random_range(config.box_y1..=config.box_y2);
-
-                // Move mouse to target (Enigo expects i32)
-                enigo.mouse_move_to(x as i32, y as i32);
-
-                // small pause to let OS update pointer position on some platforms
-                thread::sleep(Duration::from_millis(2));
-            }
-
-            match Self::execute_click_with_enigo(&mut enigo, &config) {
-                Ok(_) => {
-                    // Click executed successfully - continue silently
-                }
-                Err(e) => {
-                    if status_sender.send(StatusUpdate::Error(e)).is_err() {
-                        break;
-                    }
-                    break;
-                }
-            }
-
-            next_target_time = match config.delay_mode {
-                DelayMode::Cps => next_target_time + cps_interval,
+            // Determine delay until next tick based on mode
+            let delay_duration = match config.delay_mode {
+                DelayMode::Cps => cps_interval,
                 DelayMode::Jitter => {
-                    let delay = Self::generate_jitter_delay_with_rng(&mut rng, &config);
-                    next_target_time + delay
+                    // Use inclusive range for min..=max so we can include upper bound if desired
+                    let min_ms = config.min_delay_ms;
+                    let max_ms = config.max_delay_ms;
+                    // Guard against inverted ranges
+                    let ms = if max_ms <= min_ms {
+                        min_ms
+                    } else {
+                        rng.gen_range(min_ms..=max_ms)
+                    };
+                    Duration::from_millis(ms)
                 }
             };
-        }
 
-        is_running.store(false, Ordering::SeqCst);
-    }
-
-    fn generate_jitter_delay_with_rng(
-        rng: &mut impl rand::Rng,
-        config: &ClickerConfig,
-    ) -> Duration {
-        let delay_ms = rng.random_range(config.min_delay_ms..=config.max_delay_ms);
-        Duration::from_millis(delay_ms)
-    }
-
-    fn execute_click_with_enigo(enigo: &mut Enigo, config: &ClickerConfig) -> Result<(), String> {
-        let mut click = |dir| {
-            enigo
-                .button(Self::get_enigo_button(&config.click_button), dir)
-                .map_err(|e| format!("{}: {}", ERROR_CLICK_FAILED, e))
-        };
-
-        match config.click_type {
-            ClickType::Single => {
-                click(enigo::Direction::Click)?;
+            // Perform the click action according to config
+            match config.click_type {
+                ClickType::Single => {
+                    match config.click_button {
+                        ClickButton::Left => enigo.mouse_click(Button::Left),
+                        ClickButton::Right => enigo.mouse_click(Button::Right),
+                        ClickButton::Middle => enigo.mouse_click(Button::Middle),
+                    }
+                }
+                ClickType::Double => {
+                    match config.click_button {
+                        ClickButton::Left => {
+                            enigo.mouse_click(Button::Left);
+                            // small pause between clicks in a double click
+                            thread::sleep(Duration::from_millis(40));
+                            enigo.mouse_click(Button::Left);
+                        }
+                        ClickButton::Right => {
+                            enigo.mouse_click(Button::Right);
+                            thread::sleep(Duration::from_millis(40));
+                            enigo.mouse_click(Button::Right);
+                        }
+                        ClickButton::Middle => {
+                            enigo.mouse_click(Button::Middle);
+                            thread::sleep(Duration::from_millis(40));
+                            enigo.mouse_click(Button::Middle);
+                        }
+                    }
+                }
+                ClickType::Hold => {
+                    // Press and release quickly to emulate a hold for a short duration
+                    match config.click_button {
+                        ClickButton::Left => {
+                            enigo.mouse_down(Button::Left);
+                            thread::sleep(Duration::from_millis(50));
+                            enigo.mouse_up(Button::Left);
+                        }
+                        ClickButton::Right => {
+                            enigo.mouse_down(Button::Right);
+                            thread::sleep(Duration::from_millis(50));
+                            enigo.mouse_up(Button::Right);
+                        }
+                        ClickButton::Middle => {
+                            enigo.mouse_down(Button::Middle);
+                            thread::sleep(Duration::from_millis(50));
+                            enigo.mouse_up(Button::Middle);
+                        }
+                    }
+                }
             }
-            ClickType::Double => {
-                click(enigo::Direction::Click)?;
-                thread::sleep(Duration::from_millis(50));
-                click(enigo::Direction::Click)?;
-            }
-            ClickType::Hold => {
-                click(enigo::Direction::Press)?;
-                thread::sleep(Duration::from_millis(100));
-                click(enigo::Direction::Release)?;
-            }
-        }
 
-        Ok(())
-    }
-
-    fn get_enigo_button(click_button: &ClickButton) -> Button {
-        match click_button {
-            ClickButton::Left => Button::Left,
-            ClickButton::Right => Button::Right,
-            ClickButton::Middle => Button::Middle,
-        }
-    }
-}
-
-impl Default for PrecisionTimer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Drop for PrecisionTimer {
-    fn drop(&mut self) {
-        // Signal the thread to stop using both mechanisms
-        self.is_running.store(false, Ordering::SeqCst);
-
-        if let Some(sender) = &self.command_sender {
-            let _ = sender.send(TimerCommand::Stop);
-        }
-
-        // Don't join the thread to avoid any blocking
-        // The thread will exit naturally when it sees the stop signals
-        // Process cleanup will handle any remaining threads
-        if let Some(_handle) = self.timer_handle.take() {
-            // Just drop the handle - the thread will finish on its own
+            // Advance the next target time
+            next_target_time = Instant::now() + delay_duration;
         }
     }
 }
