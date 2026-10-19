@@ -1,3 +1,11 @@
+mod clicker;
+mod config;
+mod constants;
+mod hotkey;
+mod icons;
+mod timer;
+mod ui;
+
 use iced::widget::{column, container, row, text};
 use iced::{Element, Length, Size, Subscription, Task};
 
